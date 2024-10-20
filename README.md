@@ -16,3 +16,14 @@ CUDA 11.8
 2.MVSA is (https://mcrlab.net/research/mvsa-sentiment-analysis-on-multi-view-social-data/).  
 
 # Training
+首先，请下载所需的数据集。下载完成后，您需要在代码中更新数据集的路径。
+
+确保您已经安装了所有必要的依赖项。接下来，在终端中运行以下命令：
+
+for CTRS
+
+python main.py
+
+for MVSA
+
+python main.py
