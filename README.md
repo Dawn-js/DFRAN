@@ -5,7 +5,9 @@ With the proliferation of user-generated travel reviews, sentiment analysis in t
 
 # Prerequisites:
 Python 3.9
+
 Pytorch 2.0.0
+
 CUDA 11.8
 # Datasets:
 
