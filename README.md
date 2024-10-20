@@ -11,7 +11,7 @@ Pytorch 2.0.0
 CUDA 11.8
 # Datasets
 
-1. CTRS dataset can be obtained from the following link https://www.kaggle.com/datasets/borain/ctrsd.
+1.CTRS dataset can be obtained from the following link https://www.kaggle.com/datasets/borain/ctrsd.
 
 2.MVSA is (https://mcrlab.net/research/mvsa-sentiment-analysis-on-multi-view-social-data/).  
 
