@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 from sklearn.metrics import f1_score
-from avmodel_AF import AVmodel
+from avmodel_AF import AVmodel, Flow
 from opts import AverageMeter
 from Dataset_lvxing import get_dataset as MVSA_S
 from transformers import BertTokenizer, BertModel
@@ -70,24 +70,19 @@ elif dataset == "mvsa_multe":
 
 epoch = 10
 
-# vit_model = models.vit_b_16(pretrained=True)  # 使用 torchvision 中的 ViT
-
 # CLIP pre-trained model's path
 clip_pth = 'ViT-B/16'
-if clip_pth in ['ViT-B/16', 'ViT-B/32']:
-    dim = 512
-elif clip_pth in ['ViT-L/14']:
-    dim = 768
-#    pad_size = 77
 model, _ = clip.load(clip_pth)
 clip_model = model.to(device)
 
 fc = nn.Linear(768, 512)
 net = AVmodel(model_args).cuda()
+FlowNet = Flow().cuda()
 
 XE_loss = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr=model_lr, weight_decay=1e-5)  # best 1e-5
 lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.86)
+optimizer_1 = optim.Adam(FlowNet.parameters(), lr=flow_lr)
 
 best_acc1 = -1
 best_F1 = -1
@@ -101,21 +96,19 @@ def train_(epoch, total_epoch, l1, l2, l3, l4):
         image, text, emo_label = data[0], data[1], data[2]
 
         image, emo_label = image.to(device), emo_label.to(device)
-
-
         clip_model.eval()
         # 将文本编码为BERT输入格式
         inputs = tokenizer(text, max_length=197, padding='max_length', truncation=True, return_tensors='pt')
-
         # 使用BERT提取文本特征
         with torch.no_grad():
             outputs = model_bert(**inputs)
-
         # 提取最后一层隐藏状态
         last_hidden_states = outputs.last_hidden_state
         text_f = fc(torch.as_tensor(last_hidden_states, dtype=torch.float32)).to(device)
         image_f = clip_model.get_image_feature(image)
         image_f = torch.as_tensor(image_f, dtype=torch.float32)
+
+        _, _, loss_rec_t, loss_rec_i = FlowNet(image_f, text_f)
 
         output, output_T_aux, output_I_aux = net(text_f, image_f, training=True)
         output_all = (output + output_T_aux + output_I_aux)  /3
@@ -126,11 +119,13 @@ def train_(epoch, total_epoch, l1, l2, l3, l4):
         loss2 = XE_loss(output_T_aux, emo_label.long())
         loss3 = XE_loss(output_I_aux, emo_label.long())
 
-        loss = l1 * loss1 + l2 * loss2 + l3 * loss3 
+        loss = l1 * loss1 + l2 * loss2 + l3 * loss3 + l4 * (loss_rec_t + loss_rec_i)
         # Backward and optimize
         optimizer.zero_grad()
+        optimizer_1.zero_grad()
         loss.backward()
         optimizer.step()
+        optimizer_1.step()
 
         tasks_top1.update(cor * 100 / (emo_label.size(0) + 0.0), emo_label.size(0))
         tasks_losses.update(loss.item(), emo_label.size(0))
@@ -169,7 +164,9 @@ def test_(epoch, total_epoch, l1, l2, l3, l4):
             image_f = torch.as_tensor(image_f, dtype=torch.float32)
 
                     
-            output, output_T_aux, output_I_aux = net(text_f, image_f)
+            image , _, _, _ = FlowNet(image_f, text_f)
+                    
+            output, output_T_aux, output_I_aux = net(text_f, image)
             output_all = (output + output_T_aux + output_I_aux)/3
             emo_res = output_all.max(1)[1]  # emo 预测结果
             cor = emo_res.eq(emo_label).sum().item()
@@ -201,7 +198,6 @@ def test_(epoch, total_epoch, l1, l2, l3, l4):
 
         print("Epoch [{}/{}], Loss Avg: {:.4f}, Acc Avg: {:.4f}, F1 (Macro): {:.4f}, F1 (Micro): {:.4f}, F1 (Weighted): {:.4f}".format(
                 epoch + 1, total_epoch, tasks_losses.avg, tasks_top1.avg, overall_f1_macro, overall_f1_micro, overall_f1_weighted))
-
 
     acc = tasks_top1.avg  # 当前的准确率
     
